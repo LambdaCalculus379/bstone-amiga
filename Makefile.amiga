@@ -1,0 +1,178 @@
+PROGRAM = bstone
+
+# Build type
+BUILDTYPE ?= debug
+BUILDTYPE = release
+
+GAMEVER ?= PS
+#GAMEVER ?= AOG
+
+KALMS_C2P ?= 1
+#NO_DEPS = 1
+
+# Compiler flags
+WARN = -Wall -Wno-unused-variable -Wno-switch -Wno-char-subscripts -Wno-implicit -Wno-unused-label -Wno-unused-function
+# -Werror
+CFLAGS     = $(WARN) -std=c99 -noixemul
+ifeq ($(GAMEVER),PS)
+CFLAGS += -DGAMEVER_RESTORATION_VSI_101
+endif
+ifeq ($(GAMEVER),AOG)
+CFLAGS += -DGAMEVER_RESTORATION_BS6_210
+endif
+#CFLAGS += -fshort-enums
+#CFLAGS += -fsigned-char
+#CFLAGS += -save-temps
+
+# Linker flags
+BASE_LDFLAGS = -lm -noixemul
+# -Wl,-Map=bstone.map
+
+# Target compiler options
+TARGET   = m68k-amigaos-
+ARCH     = -m68020 -msoft-float
+CFLAGS += $(ARCH)
+LDFLAGS  = $(BASE_LDFLAGS) $(ARCH)
+
+# Assign includes
+CFLAGS += -I.
+# -Idosbox
+
+# Source files
+SRCS = lowlevel.c \
+	libnix_fix.c \
+	truncate.c \
+	itoa.c \
+	3d_act1.c \
+	3d_act2.c \
+	3d_agent.c \
+	3d_debug.c \
+	3d_draw.c \
+	3d_draw2.c \
+	3d_game.c \
+	3d_inter.c\
+	3d_main.c \
+	3d_menu.c \
+	3d_msgs.c \
+	3d_play.c \
+	3d_scale_amiga.c \
+	3d_state.c \
+	colormap.c \
+	d3_d2.c \
+	d3_dr2.c \
+	filelen.c \
+	findfirst.c \
+	fnmatch.c \
+	id_ca.c \
+	id_in.c \
+	id_mm_amiga.c \
+	id_pm.c \
+	id_sd.c \
+	id_sdd.c  \
+	id_us_1.c \
+	id_us.c \
+	id_vh.c \
+	id_vl_amiga.c \
+	jm_cio.c \
+	jm_debug.c \
+	jm_free.c \
+	jm_io.c \
+	jm_lzh.c \
+	jm_tp.c \
+	markhack.c \
+	movie.c \
+	scale.c \
+	stub.c \
+	vgapal.c
+
+CONVERT_SRC = \
+	libnix_fix.c \
+	opl/dbopl.c \
+	id_ca.c \
+	id_pm.c \
+	id_sd.c \
+	id_sdd.c \
+	jm_cio.c \
+	jm_free.c \
+	jm_io.c \
+	jm_lzh.c \
+	filelen.c \
+	convert.c
+
+PATCHER_SRC = \
+	libnix_fix.c \
+	patcher.c
+
+ifeq ($(KALMS_C2P),1)
+CFLAGS += -DKALMS_C2P
+C2P_SRCS = \
+	c2p1x1_8_c5_030_2.s \
+	c2p1x1_8_c5_040.s
+endif
+
+# Debug Configuration
+ifeq ($(BUILDTYPE),debug)
+CFLAGS += -g -DDEBUG
+endif
+ifeq ($(BUILDTYPE),release)
+CFLAGS +=  -O2 -fomit-frame-pointer
+endif
+
+# Assign paths to binaries/sources/objects
+#BUILD      = build
+BUILD      = .
+OBJDIR     = $(BUILD)/objs/$(BUILDTYPE)
+
+DEPS = $(filter %.d, $(SRCS:.c=.d) $(SRCS:.cpp=.d))
+OBJS       := $(addprefix $(OBJDIR)/,$(SRCS:.c=.o)) 
+C2P_OBJS       := $(addprefix $(OBJDIR)/,$(C2P_SRCS:.s=.o)) 
+CONVERT_OBJS       := $(addprefix $(OBJDIR)/,$(CONVERT_SRC:.c=.o)) 
+PATCHER_OBJS       := $(addprefix $(OBJDIR)/,$(PATCHER_SRC:.c=.o)) 
+#OBJS = $(filter %.o, $(SRCS:.c=.o) $(SRCS:.cpp=.o) $(SRCS:.s=.o))
+
+PROGRAM    := $(addprefix $(BUILD)/,$(PROGRAM)) 
+
+# Assign Tools
+CC  = $(TARGET)gcc
+AS  = vasm -Faout -m68020
+STRIPBIN = $(TARGET)strip -K ___stack
+
+
+# Build rules
+all: setup depend $(PROGRAM) convert-sounds patch-data
+
+setup:
+	mkdir -p $(OBJDIR)
+	mkdir -p $(OBJDIR)/opl
+
+ifndef NO_DEPS
+depend: $(DEPS)
+
+ifeq ($(findstring $(MAKECMDGOALS), clean depend setup),)
+-include $(DEPS)
+endif
+endif
+
+$(PROGRAM): $(OBJS) $(C2P_OBJS) swapstack.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+ifeq ($(BUILDTYPE),release)
+	$(STRIPBIN) $@
+endif
+
+convert-sounds: $(CONVERT_OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+patch-data: $(PATCHER_OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+$(OBJDIR)/%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJDIR)/%.o: %.s
+	$(AS) $< -o $@
+
+%.d: %.c
+	$(CC) $(CFLAGS) -MM $< | sed 's#^$(@F:%.d=%.o):#$@ $(@:%.d=%.o):#' > $@
+
+clean:
+	rm -f $(PROGRAM) $(OBJS) $(DEPS) $(C2P_OBJS) $(CONVERT_OBJS)
