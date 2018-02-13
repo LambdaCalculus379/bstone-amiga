@@ -1,0 +1,18 @@
+# Prerequisites
+*.d
+
+# Object files
+# *.o
+objs/
+
+# Executables
+*.exe
+
+# Game data
+*.BS6
+*.VSI
+
+# Temp files
+*.bak
+*.svf
+
